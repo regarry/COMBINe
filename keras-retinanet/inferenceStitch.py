@@ -72,20 +72,21 @@ cHANNELS = {'561nm':'RFP', '640nm':'GFP'}
 
 tHRESHOLD = 0.5 # threshold for detection confidence score
 sAVEIMAGE = True # whether to export image with detection boxes
-cAPTION = False # whether to export with label cAPTIONs
+cAPTION = False # whether to export image with label captions
 sAVECSV = True # whether to export table of detections
 sTARTID = None; eNDID = None # start and end of tile indexes for prediction; if None, all tiles
-tiles = [] # list of selected tile indexes for predicstion; if empty, sTARTID:eNDID
-mERGEZTILE = True # whether to merge predicstions across z for a single tile
-mERGEZ = True # whether to merge predicstions across z for stitching
-rES = [[0.65, 0.65, 10]] # voxel size of dataset
+tiles = [] # list of selected tile indexes for prediction; if empty, sTARTID:eNDID
+mERGEZTILE = False # whether to merge predictions across z for a single tile
+mERGEZ = True # whether to merge predictions across z during stitching
+rES = [[0.65, 0.65, 10]] # voxel size of the dataset
 tILESIZE = 2048 # size of a field of view (tile)
 xsize = 512; ysize = 512; step = 448 # size and step of image patches for detection
 
 aLIGNED = 'Table' # if NuMorph channel alignment has been performed; 'Table' - translation table available, 'Image' - aligned images avialable, None - no alignment
-left2right = True; top2bottom = True # Required only if aLIGNED = 'Table'; same as in NMp_template
+left2right = True; top2bottom = True # Required only if aLIGNED = 'Table'; same input as in NMp_template
 
 pATHRESULT = os.path.join(pATHDATA,'cell_detection') # output dir
+classes = list(labels_to_names.values())
 classes = list(labels_to_names.values())
 num_class = len(classes)
 
@@ -272,7 +273,7 @@ def load_predictions(all_predictions, csv_reader, classes, z_start, Z, disp, fil
        
     return all_predictions
 
-def combine_predictions(all_predictions, csv_reader, classes, z_start, Z, pos, disp_mat, size, tILESIZE=2048, file_z0 = None):
+def combine_predictions(all_predictions, csv_reader, classes, z_start, Z, pos, disp_mat, size, tILESIZE = 2048, file_z0 = None):
     ''' exclude redundant predictions in overlapped areas for multi-tile stithing
         join predictions according to cell type
     '''
@@ -292,7 +293,7 @@ def combine_predictions(all_predictions, csv_reader, classes, z_start, Z, pos, d
         x_pre_start = disp_mat[row-1,col][0]
         y_pre_start = disp_mat[row-1,col][1]       
         mask[max(ABS_Y,y_pre_start):min(ABS_Y+tILESIZE,y_pre_start+tILESIZE),
-             max(ABS_Y,x_pre_start):min(ABS_Y+tILESIZE,x_pre_start+tILESIZE)] = 1        
+             max(ABS_X,x_pre_start):min(ABS_X+tILESIZE,x_pre_start+tILESIZE)] = 1        
     z0 = z_start - ABS_Z
     z1 = z0 + Z
     # print(z0,z1)
@@ -462,8 +463,8 @@ for p, pATHTEST in enumerate(pATHTILE):
                             # correct for image scale
                             boxes /= scale
                             boxes += offset
-                            np.clip(boxes[:,:,2], 0, W0)
-                            np.clip(boxes[:,:,3], 0, H0)
+                            boxes[:,:,2] = np.clip(boxes[:,:,2], 0, W0)
+                            boxes[:,:,3] = np.clip(boxes[:,:,3], 0, H0)
                             
                             # select indices which have a score above the tHRESHOLD
                             indices = np.where(scores[0, :] > tHRESHOLD)[0]
@@ -549,15 +550,26 @@ for p, pATHTEST in enumerate(pATHTILE):
                 merge_detections = copy.deepcopy(clean_detections)
                 
                 for i in range(len(clean_detections)-1):
-                    for label in range(num_class):
-                        cleaned_detections = clean_detections[i][label]
-                        if cleaned_detections.size > 1:
-                            cleaned_detections_next = clean_detections[i+1][label]
-                            if cleaned_detections_next.size > 1:
-                                comb_detections = np.concatenate([cleaned_detections, cleaned_detections_next])
-                                cleaned_comb_detections = non_max_suppression_merge(comb_detections, sort=5)
-                                merge_detections[i][label] = cleaned_comb_detections[cleaned_comb_detections[:,-1]==i+1]
-                                merge_detections[i+1][label] = cleaned_comb_detections[cleaned_comb_detections[:,-1]==i+2]
+                    if i == 0:          
+                        for label in range(num_class):
+                            cleaned_detections = clean_detections[i][label]
+                            if cleaned_detections.size > 1:
+                                cleaned_detections_next = clean_detections[i+1][label]
+                                if cleaned_detections_next.size > 1:
+                                    comb_detections = np.concatenate([cleaned_detections, cleaned_detections_next])
+                                    cleaned_comb_detections = non_max_suppression_merge(comb_detections, sort=5)
+                                    merge_detections[i][label] = cleaned_comb_detections[cleaned_comb_detections[:,-1]==i+1]
+                                    merge_detections[i+1][label] = cleaned_comb_detections[cleaned_comb_detections[:,-1]==i+2]
+                    else:
+                        for label in range(num_class):
+                            cleaned_detections = merge_detections[i][label]
+                            if cleaned_detections.size > 1:
+                                cleaned_detections_next = clean_detections[i+1][label]
+                                if cleaned_detections_next.size > 1:
+                                    comb_detections = np.concatenate([cleaned_detections, cleaned_detections_next])
+                                    cleaned_comb_detections = non_max_suppression_merge(comb_detections, sort=5)
+                                    merge_detections[i][label] = cleaned_comb_detections[cleaned_comb_detections[:,-1]==i+1]                                                                                          
+                                    merge_detections[i+1][label] = cleaned_comb_detections[cleaned_comb_detections[:,-1]==i+2]
                 
                 # save the objects
                 obj = {}
@@ -634,8 +646,12 @@ def loadTeraxml(fxml):
     disp_mat_fin = disp_mat_fin - [x_min,y_min,0] 
     
     return dir_dict, H, W, Z, z_start, disp_mat_fin
-
-dir_dict, H, W, Z, z_start, disp_mat_fin = loadTeraxml(os.path.join(pATHDATA, channels[0], 'xml_merging.xml'))
+    
+if os.path.isfile(os.path.join(pATHDATA, channels[0], 'xml_merging.xml')):
+    pATHxml = os.path.join(pATHDATA, channels[0], 'xml_merging.xml')
+else:
+    pATHxml = os.path.join(pATHDATA, channels[0], 'xml_import.xml')     
+dir_dict, H, W, Z, z_start, disp_mat_fin = loadTeraxml(pATHxml)
 
 # %% Stitching predictions according to TeraStitcher xml
 
@@ -675,15 +691,26 @@ if mERGEZ:
         merge_predictions = copy.deepcopy(stitched_predictions)
         
         for i in range(Z-1):
-            for l in range(2):
-                cleaned_predictions = stitched_predictions[i][l]
-                if cleaned_predictions.size > 1:
-                    cleaned_predictions_next = stitched_predictions[i+1][l]
-                    if cleaned_predictions_next.size > 1:
-                        comb_predictions = np.concatenate([cleaned_predictions, cleaned_predictions_next])
-                        cleaned_comb_predictions = non_max_suppression_merge(comb_predictions, sort=5)
-                        merge_predictions[i][l] = cleaned_comb_predictions[cleaned_comb_predictions[:,-1]==i+1]
-                        merge_predictions[i+1][l] = cleaned_comb_predictions[cleaned_comb_predictions[:,-1]==i+2]
+            if i == 0:        
+                for l in range(2):
+                    cleaned_predictions = stitched_predictions[i][l]
+                    if cleaned_predictions.size > 1:
+                        cleaned_predictions_next = stitched_predictions[i+1][l]
+                        if cleaned_predictions_next.size > 1:
+                            comb_predictions = np.concatenate([cleaned_predictions, cleaned_predictions_next])
+                            cleaned_comb_predictions = non_max_suppression_merge(comb_predictions, sort=5)
+                            merge_predictions[i][l] = cleaned_comb_predictions[cleaned_comb_predictions[:,-1]==i+1]
+                            merge_predictions[i+1][l] = cleaned_comb_predictions[cleaned_comb_predictions[:,-1]==i+2]
+            else:
+                for l in range(2):
+                    cleaned_detections = merge_predictions[i][label]
+                    if cleaned_predictions.size > 1:
+                        cleaned_predictions_next = stitched_predictions[i+1][l]
+                        if cleaned_predictions_next.size > 1:
+                            comb_predictions = np.concatenate([cleaned_predictions, cleaned_predictions_next])
+                            cleaned_comb_predictions = non_max_suppression_merge(comb_predictions, sort=5)
+                            merge_predictions[i][l] = cleaned_comb_predictions[cleaned_comb_predictions[:,-1]==i+1]
+                            merge_predictions[i+1][l] = cleaned_comb_predictions[cleaned_comb_predictions[:,-1]==i+2]
         
         # save the objects
         obj = {}
@@ -705,7 +732,7 @@ if mERGEZ:
                                                   prediction[-3]])
     # print output
     for c in range(1,num_class):
-        print('detected',classes[c],'(after):',counts_m[c])                         
+        print('detected',classes[c],'(after merging):',counts_m[c])                         
 
 print("Finished in: ", time.time() - init)
 
