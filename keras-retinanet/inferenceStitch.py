@@ -85,12 +85,13 @@ xsize = 512; ysize = 512; step = 448 # size and step of image patches for detect
 aLIGNED = 'Table' # if NuMorph channel alignment has been performed; 'Table' - translation table available, 'Image' - aligned images avialable, None - no alignment
 left2right = True; top2bottom = True # Required only if aLIGNED = 'Table'; same input as in NMp_template
 
+# %% Default config
+
 pATHRESULT = os.path.join(pATHDATA,'cell_detection') # output dir
 classes = list(labels_to_names.values())
-classes = list(labels_to_names.values())
 num_class = len(classes)
-
-
+sUFFIX = [".png","_cap.png"] # image file suffix when save w/ or w/o caption
+channels = list(cHANNELS.keys()); markers = list(cHANNELS.values())
 
 # %% Functions
 
@@ -322,12 +323,8 @@ def combine_predictions(all_predictions, csv_reader, classes, z_start, Z, pos, d
 
 # %% Multi-tile detection (multi-channel)
         
-channels = list(cHANNELS.keys()); markers = list(cHANNELS.values())
-
 dirnames, pATHTILE = listTile(os.path.join(pATHDATA,channels[0])) # input
 dir_map = mapTile(dirnames, left2right, top2bottom)
-
-sUFFIX = [".png","_cap.png"] # image file suffix when save w/ or w/o caption
 
 if not sTARTID: sTARTID = 1
 if not eNDID: eNDID = len(pATHTILE)
