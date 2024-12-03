@@ -10,6 +10,13 @@ Open Anaconda Prompt and create an virtual environment - the package versions be
 `conda create -n keras-retinanet python=3.7 tensorflow-gpu=2.3 tensorflow=2.3=mkl_py37h936c3e2_0 keras=2.4 numpy=1.19.2`      
 Activate the environment: `conda activate keras-retinanet`.  
 
+How I had to do it:
+```bash
+conda create -n keras-retinanet python=3.7
+conda activate keras-retinanet
+pip install tensorflow==2.3
+```
+
 Go to the code directory, e.g. `.../keras-retinanet-main/`, in Anaconda Prompt.  
 Install keras-retinanet `pip install . --user`.  
 To run the code directly from the directory, run `python setup.py build_ext --inplace` to compile Cython code.
